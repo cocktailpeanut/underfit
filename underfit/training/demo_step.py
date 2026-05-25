@@ -411,13 +411,13 @@ def _restore_swapped_weights(model, saved_model, saved_cond):
         _get_param(model.conditioner, key).data.copy_(cpu_val)
 
 
-def run_demo_step(model, backend, demo_cfg, step, sample_size, sample_rate, device, model_config=None):
+def run_demo_step(model, backend, demo_config, step, sample_size, sample_rate, device, model_config=None):
     """Generate the per-prompt demo set for one step.
 
     Args:
         model: the diffusion model wrapper (has .model, .conditioner, .pretransform).
         backend: underfit.backends.<sat_dev|sa3> module.
-        demo_cfg: dict from model_config.training.demo. Keys we honor:
+        demo_config: dict from model_config.training.demo. Keys we honor:
             demo_cond, demo_cfg_scales, demo_steps,
             arc_lora_path, arc_full_model_path, arc_full_model_config,
             latent_crop_length.
@@ -429,19 +429,19 @@ def run_demo_step(model, backend, demo_cfg, step, sample_size, sample_rate, devi
     Writes demo_<i>_<step:08d>.mp3 + .json into cwd. Skips entries that
     already exist on disk (idempotent for resumes).
     """
-    demo_cond = demo_cfg.get("demo_cond") or []
+    demo_cond = demo_config.get("demo_cond") or []
     if not demo_cond:
         return
     if os.path.exists(f"demo_0_{step:08d}.mp3"):
         tqdm.write(f"Demos already exist for step {step}, skipping generation", file=sys.stdout)
         return
 
-    demo_cfg_scales = demo_cfg.get("demo_cfg_scales", [7])
-    demo_steps = demo_cfg.get("demo_steps", 50)
-    latent_crop_length = demo_cfg.get("latent_crop_length")
-    arc_lora_path = demo_cfg.get("arc_lora_path")
-    arc_full_model_path = demo_cfg.get("arc_full_model_path")
-    arc_full_model_config = demo_cfg.get("arc_full_model_config")
+    demo_cfg_scales = demo_config.get("demo_cfg_scales", [7])
+    demo_steps = demo_config.get("demo_steps", 50)
+    latent_crop_length = demo_config.get("latent_crop_length")
+    arc_lora_path = demo_config.get("arc_lora_path")
+    arc_full_model_path = demo_config.get("arc_full_model_path")
+    arc_full_model_config = demo_config.get("arc_full_model_config")
     default_cfg = demo_cfg_scales[0] if demo_cfg_scales else 7
 
     default_dur_latents = _get_demo_latent_length(model, sample_size, latent_crop_length)

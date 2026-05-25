@@ -2564,8 +2564,8 @@ def _extract_hyperparams(run):
                 if lora_exclude:
                     result["lora_exclude"] = lora_exclude
 
-                demo_cfg = training.get("demo", {})
-                de = demo_cfg.get("demo_every")
+                demo_config = training.get("demo", {})
+                de = demo_config.get("demo_every")
                 if de is not None:
                     result["demo_every"] = de
 
@@ -3653,12 +3653,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 cfg["training"].setdefault("optimizer_configs", {}).setdefault("diffusion", {}).setdefault("optimizer", {}).setdefault("config", {})["lr"] = lr_val
             # Inject ARC path for demos during training.
             if mi.get("arc_ckpt"):
-                demo_cfg = cfg["training"].setdefault("demo", {})
+                demo_config = cfg["training"].setdefault("demo", {})
                 if mi.get("arc_type") == "lora":
-                    demo_cfg["arc_lora_path"] = mi["arc_ckpt"]
+                    demo_config["arc_lora_path"] = mi["arc_ckpt"]
                 elif mi.get("arc_type") == "full_model":
-                    demo_cfg["arc_full_model_path"] = mi["arc_ckpt"]
-                    demo_cfg["arc_full_model_config"] = mi["arc_config"]
+                    demo_config["arc_full_model_path"] = mi["arc_ckpt"]
+                    demo_config["arc_full_model_config"] = mi["arc_config"]
             run_config_path = f"{save_dir}/{run_id}_model.json"
             with open(run_config_path, "w") as f:
                 json.dump(cfg, f, indent=2)

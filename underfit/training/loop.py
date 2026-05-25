@@ -70,10 +70,10 @@ def _resize_padding_mask(padding_mask, target_length):
     return positions < new_valid.unsqueeze(1)
 
 
-def _resolve_resume_path(args, training_cfg):
+def _resolve_resume_path(args, training_config):
     """The .safetensors path we're resuming from, if any. CLI arg takes
-    precedence over training_cfg.lora_ckpt_path."""
-    return getattr(args, "lora_ckpt_path", None) or training_cfg.get("lora_ckpt_path")
+    precedence over training_config.lora_ckpt_path."""
+    return getattr(args, "lora_ckpt_path", None) or training_config.get("lora_ckpt_path")
 
 
 def _parse_filename_offsets(lora_path):
@@ -90,7 +90,7 @@ def _resolve_offsets(args, model_config, resume_metadata, steps_per_epoch=None):
     """Recover (step_offset, epoch_offset) for a resume.
 
     Resolution order, per requirement:
-      1. training_cfg.step_offset / training_cfg.epoch_offset (explicit override) —
+      1. training_config.step_offset / training_config.epoch_offset (explicit override) —
          respected even when the value is 0 (used by the "seed from a previous
          LoRA" workflow, which wants the new run to start at step 0/epoch 0
          regardless of whatever step is baked into the seed safetensors).
@@ -98,15 +98,15 @@ def _resolve_offsets(args, model_config, resume_metadata, steps_per_epoch=None):
       3. step= / epoch= tokens parsed from the resume filename
       4. step // steps_per_epoch as a last-resort estimate for epoch
     """
-    training_cfg = model_config.get("training", {})
+    training_config = model_config.get("training", {})
     # Explicit override path — `step_offset` / `epoch_offset` keys PRESENT
     # in the config (even with value 0) take precedence over metadata.
-    has_cfg_step = "step_offset" in training_cfg
-    has_cfg_epoch = "epoch_offset" in training_cfg
-    cfg_step = int(training_cfg.get("step_offset", 0) or 0) if has_cfg_step else None
-    cfg_epoch = int(training_cfg.get("epoch_offset", 0) or 0) if has_cfg_epoch else None
+    has_config_step = "step_offset" in training_config
+    has_config_epoch = "epoch_offset" in training_config
+    config_step = int(training_config.get("step_offset", 0) or 0) if has_config_step else None
+    config_epoch = int(training_config.get("epoch_offset", 0) or 0) if has_config_epoch else None
 
-    lora_path = _resolve_resume_path(args, training_cfg)
+    lora_path = _resolve_resume_path(args, training_config)
 
     meta_step = meta_epoch = None
     if resume_metadata:
@@ -125,12 +125,12 @@ def _resolve_offsets(args, model_config, resume_metadata, steps_per_epoch=None):
     if lora_path:
         file_step, file_epoch = _parse_filename_offsets(lora_path)
 
-    if cfg_step is not None:
-        step_offset = cfg_step
+    if config_step is not None:
+        step_offset = config_step
     else:
         step_offset = meta_step or file_step or 0
-    if cfg_epoch is not None:
-        epoch_offset = cfg_epoch
+    if config_epoch is not None:
+        epoch_offset = config_epoch
     else:
         epoch_offset = meta_epoch or file_epoch
         if epoch_offset is None:
@@ -266,15 +266,15 @@ def run_training(args, backend):
     with open(args.dataset_config) as f:
         dataset_config = json.load(f)
 
-    training_cfg = model_config.get("training", {})
-    lora_config = training_cfg.get("lora_config")
+    training_config = model_config.get("training", {})
+    lora_config = training_config.get("lora_config")
     if lora_config:
         print("LoRA config:", lora_config)
 
     sample_rate = model_config["sample_rate"]
     sample_size = model_config["sample_size"]
     audio_channels = model_config.get("audio_channels", 2)
-    pre_encoded = bool(training_cfg.get("pre_encoded", False))
+    pre_encoded = bool(training_config.get("pre_encoded", False))
 
     # --- Build model and load pretrained weights ---
     print("[startup] Building model from config …", flush=True)
@@ -322,14 +322,14 @@ def run_training(args, backend):
     # (the dashboard writes this into the _model_resume.json on resume).
     lora_state_dict = None
     resume_metadata = None
-    lora_resume_path = getattr(args, "lora_ckpt_path", None) or training_cfg.get("lora_ckpt_path")
+    lora_resume_path = getattr(args, "lora_ckpt_path", None) or training_config.get("lora_ckpt_path")
     if lora_resume_path:
         print(f"Loading LoRA resume from {lora_resume_path}")
         lora_state_dict, resume_metadata = load_lora_resume(backend, lora_resume_path)
 
     if lora_config is None:
         raise ValueError("Underfit raw-PT loop requires training.lora_config in model config")
-    base_precision = training_cfg.get("base_precision")
+    base_precision = training_config.get("base_precision")
     svd_bases_path = model_config.get("svd_bases_path")
     print("[startup] Applying LoRA adapters …", flush=True)
     lora_params, saved_lora_cfg = apply_lora_from_config(
@@ -373,7 +373,7 @@ def run_training(args, backend):
     )
 
     # --- Optimizer and scheduler ---
-    optimizer_configs = training_cfg.get("optimizer_configs")
+    optimizer_configs = training_config.get("optimizer_configs")
     if optimizer_configs is None:
         if not getattr(args, "lr", None):
             raise ValueError("Need optimizer_configs in training config or --lr CLI arg")
@@ -396,7 +396,7 @@ def run_training(args, backend):
         print(f"AMP: autocast={autocast_dtype}, grad_scaler={grad_scaler is not None}", flush=True)
 
     # --- Step + epoch offsets for resume ---
-    # Resolution order: training_cfg.{step,epoch}_offset > safetensors metadata >
+    # Resolution order: training_config.{step,epoch}_offset > safetensors metadata >
     # filename tokens > step//steps_per_epoch (epoch only).
     steps_per_epoch = len(train_dl) if hasattr(train_dl, "__len__") else None
     step_offset, epoch_offset = _resolve_offsets(
@@ -423,18 +423,18 @@ def run_training(args, backend):
 
     # --- Training loop ---
     diffusion_objective = model.diffusion_objective
-    cfg_dropout_prob = float(training_cfg.get("cfg_dropout_prob", 0.1))
-    timestep_sampler = training_cfg.get("timestep_sampler", "uniform")
-    timestep_options = training_cfg.get("timestep_sampler_options", {})
-    mask_loss_weight = float(training_cfg.get("mask_loss_weight", 0.0))
+    cfg_dropout_prob = float(training_config.get("cfg_dropout_prob", 0.1))
+    timestep_sampler = training_config.get("timestep_sampler", "uniform")
+    timestep_options = training_config.get("timestep_sampler_options", {})
+    mask_loss_weight = float(training_config.get("mask_loss_weight", 0.0))
     mask_padding_attention = bool(getattr(model, "mask_padding_attention", False))
     use_effective_length_for_schedule = bool(getattr(model, "use_effective_length_for_schedule", False))
-    loss_normalization = training_cfg.get("loss_normalization", "none")
-    loss_norm_eps = float(training_cfg.get("loss_norm_eps", 1e-6))
+    loss_normalization = training_config.get("loss_normalization", "none")
+    loss_norm_eps = float(training_config.get("loss_norm_eps", 1e-6))
     grad_clip = args.gradient_clip_val if args.gradient_clip_val else None
     # SAT-dev factory reads training.inpainting; SA3 train_lora always supplies
     # zeros for inpaint conditioning. We follow SAT-dev's key naming.
-    inpainting_config = training_cfg.get("inpainting") or training_cfg.get("inpainting_config")
+    inpainting_config = training_config.get("inpainting") or training_config.get("inpainting_config")
     inpaint_mask_kwargs = (inpainting_config or {}).get("mask_kwargs", {})
     needs_inpaint_cond = (
         "inpaint_mask" in (getattr(model, "local_add_cond_ids", []) or [])
@@ -445,8 +445,8 @@ def run_training(args, backend):
 
     max_steps = int(args.max_steps) if args.max_steps else 10**9
     save_every = int(args.checkpoint_every) if args.checkpoint_every else 1000
-    demo_cfg = training_cfg.get("demo", {}) or {}
-    demo_every = int(demo_cfg.get("demo_every", 0))
+    demo_config = training_config.get("demo", {}) or {}
+    demo_every = int(demo_config.get("demo_every", 0))
     last_demo_step = -1
     raw_step = 0
     epoch = epoch_offset
@@ -462,7 +462,7 @@ def run_training(args, backend):
             try:
                 with torch.no_grad():
                     run_demo_step(
-                        model, backend, demo_cfg, 0,
+                        model, backend, demo_config, 0,
                         sample_size=sample_size,
                         sample_rate=sample_rate,
                         device=device,
@@ -654,7 +654,7 @@ def run_training(args, backend):
                             try:
                                 with torch.no_grad():
                                     run_demo_step(
-                                        model, backend, demo_cfg, global_step,
+                                        model, backend, demo_config, global_step,
                                         sample_size=sample_size,
                                         sample_rate=sample_rate,
                                         device=device,
