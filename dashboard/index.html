@@ -5370,10 +5370,8 @@ window.handleSeedLoraFile = async function(ev) {
   if (Array.isArray(cfg.exclude)) document.getElementById('new-ft-exclude').value = cfg.exclude.join(',');
   _setLoraFrozen(true);
   document.getElementById('new-ft-lora-load-btn').style.display = 'none';
-  const stepHint = cfg.step ? ` · step ${cfg.step}` : '';
   const status = document.getElementById('new-ft-seed-status');
-  status.innerHTML = `<span style="color:var(--green)">✓ ${data.filename}</span>` +
-    `<span style="color:var(--text2)">${stepHint}</span> ` +
+  status.innerHTML = `<span style="color:var(--green)">✓ ${data.filename}</span> ` +
     `<a href="#" onclick="event.preventDefault();_clearSeedLora();return false;" ` +
     `style="color:#9af;font-size:0.9em">[clear]</a>`;
   validateNewFt();

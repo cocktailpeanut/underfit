@@ -3410,9 +3410,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # Optional seed: user-uploaded .safetensors LoRA to start from. When
         # set, it overrides the lora_type/rank/alpha/include/exclude knobs
         # with the values baked into the seed's metadata, and we point the
-        # training loop at the file via lora_ckpt_path.
+        # training loop at the file via lora_ckpt_path. Step counter resets
+        # to 0 — running the seed's old step into the new training would be
+        # confusing (it's not a real resume of the same dataset/optimizer).
         seed_lora_path = body.get("seed_lora_path") or None
-        seed_lora_step = 0
         if seed_lora_path:
             sp = Path(seed_lora_path)
             if not sp.exists() or not sp.is_file():
@@ -3438,7 +3439,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             exc = sc.get("exclude")
             lora_include = ",".join(inc) if isinstance(inc, list) else (inc or lora_include)
             lora_exclude = ",".join(exc) if isinstance(exc, list) else (exc or lora_exclude)
-            seed_lora_step = int(sc.get("step", 0) or 0)
         lr_raw = body.get("lr", "")
         base_precision = body.get("base_precision")  # null, "bf16", "fp16"
 
@@ -3519,8 +3519,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     )
                     return
                 cfg["training"]["lora_ckpt_path"] = str(run_seed_dst)
-                if seed_lora_step > 0:
-                    cfg["training"]["step_offset"] = seed_lora_step
+                # Intentionally do NOT set step_offset — the new run starts at
+                # step 0 with the seed's weights as initialization.
             if mi.get("svd_bases"):
                 cfg["svd_bases_path"] = mi["svd_bases"]
             if base_precision:
@@ -3741,7 +3741,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if seed_lora_path:
             run["seed_lora"] = {
                 "filename": body.get("seed_lora_filename") or os.path.basename(seed_lora_path),
-                "step": seed_lora_step,
                 "adapter_type": lora_type,
                 "rank": rank,
             }
