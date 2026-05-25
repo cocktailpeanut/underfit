@@ -7077,7 +7077,17 @@ window.dsxShowDetail = async function(dsId) {
     const statusCls = ds.status === 'ready' ? 'ready' : ds.status === 'encoding' ? 'encoding' : 'error';
     const _dsModelLabel2 = (m) => { const shared = {'sao':'SAO / SAO-small'}; return shared[m] || (m||'?').toUpperCase(); };
     let info = `<span class="dsx-status ${statusCls}">${ds.status}</span> &nbsp; <span style="color:var(--accent2)">${_dsModelLabel2(ds.model)}</span>`;
-    info += `<br>Files: ${data.total_files} total (${data.files_with_tags} with tags)`;
+    // Show "N source files → M chunks" when split-on-encode produced more
+    // latents than source files; otherwise just "N total".
+    const _srcCount = data.total_files;
+    const _chunkCount = (ds && ds.num_chunks) ? ds.num_chunks : _srcCount;
+    let _filesLine;
+    if (_chunkCount && _srcCount && _chunkCount !== _srcCount) {
+      _filesLine = `${_srcCount} source file${_srcCount === 1 ? '' : 's'} → ${_chunkCount} chunks`;
+    } else {
+      _filesLine = `${_srcCount} total`;
+    }
+    info += `<br>Files: ${_filesLine} (${data.files_with_tags} with tags)`;
     if (ds.input_dir) info += `<br>Input: <span style="color:var(--text2)">${ds.input_dir}</span>`;
     if (ds.latent_dir) info += `<br>Latents: <span style="color:var(--text2)">${ds.latent_dir}</span>`;
     const dpVal = ds.default_prompt || '';
