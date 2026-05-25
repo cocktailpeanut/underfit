@@ -5273,6 +5273,13 @@ function _setLoraFrozen(frozen) {
       lf.style.pointerEvents = '';
     }
   }
+  // Base model dropdown — must match what the seed was trained on; freeze
+  // so the user can't desync it from the seed.
+  const bm = document.getElementById('new-ft-base-model');
+  if (bm) {
+    bm.disabled = frozen;
+    bm.style.opacity = frozen ? '0.35' : '';
+  }
 }
 
 function _showSeedUploadModal(filename, sizeMb) {
@@ -5358,6 +5365,57 @@ window.handleSeedLoraFile = async function(ev) {
     alert(lines.join('\n'));
     return;
   }
+
+  // ── Base-model checks ───────────────────────────────────────────────
+  const currentBase = document.getElementById('new-ft-base-model').value;
+  const seedBase = data.base_model_in_seed;        // string or null
+  const seedBaseKnown = !!data.base_model_known;   // is seedBase in our registry?
+  const inferred = data.inferred_base_models || [];
+
+  if (seedBase) {
+    if (!seedBaseKnown) {
+      alert(`This LoRA was trained from base model '${seedBase}', `
+            + `but that model isn't loaded in this dashboard. Add the `
+            + `'${seedBase}' model to the dashboard, or use a LoRA whose `
+            + `base model is one of: ${Object.keys(_remoteModels).join(', ')}`);
+      return;
+    }
+    if (seedBase !== currentBase) {
+      const switchTo = confirm(
+        `This LoRA was trained from base model '${seedBase}', `
+        + `but you've selected '${currentBase}'. Switch to '${seedBase}'?\n\n`
+        + `OK to switch, Cancel to abort the upload.`);
+      if (!switchTo) return;
+      document.getElementById('new-ft-base-model').value = seedBase;
+      // Trigger the same side-effects the dropdown's onchange does.
+      _applyDefaultExclusions(); filterNewFtDatasets(); renderModuleChips();
+      updateCkptEstimate(); _updateCropLength();
+    }
+  } else if (inferred.length === 0) {
+    alert("This LoRA doesn't seem to fit with any base model loaded in this dashboard. "
+          + 'Its layer dimensions match none of: '
+          + Object.keys(_remoteModels).join(', '));
+    return;
+  } else {
+    // No base_model in metadata, but heuristic produced candidates.
+    const listed = inferred.join(', ');
+    const choice = prompt(
+      `This LoRA was trained with an unknown base model (no metadata).\n`
+      + `Possible compatible models in this dashboard: ${listed}\n\n`
+      + `Type the exact model key to use, or Cancel to abort:`,
+      inferred[0]);
+    if (!choice) return;
+    if (!inferred.includes(choice)) {
+      alert(`'${choice}' isn't one of the suggested matches: ${listed}`);
+      return;
+    }
+    if (choice !== currentBase) {
+      document.getElementById('new-ft-base-model').value = choice;
+      _applyDefaultExclusions(); filterNewFtDatasets(); renderModuleChips();
+      updateCkptEstimate(); _updateCropLength();
+    }
+  }
+
   // Success — populate fields, freeze, hide the load button, show filename + [clear].
   document.getElementById('new-ft-seed-path').value = data.path;
   document.getElementById('new-ft-seed-filename').value = data.filename;

@@ -87,12 +87,17 @@ def apply_lora_from_config(backend, model, lora_config, lora_state_dict=None,
     return lora_params, saved_config
 
 
-def save_lora_step(backend, model, lora_save_config, out_path, *, step=None, epoch=None):
+def save_lora_step(backend, model, lora_save_config, out_path,
+                   *, step=None, epoch=None, base_model=None):
     """Save LoRA weights to out_path as a .safetensors file with config metadata.
 
     `step` and `epoch` are folded into the saved metadata (under the "step"
     and "epoch" keys inside the lora_config metadata blob), so resumes can
     recover them without parsing the filename.
+
+    `base_model` (e.g. "sa3-medium") goes into metadata too — used by the
+    dashboard's "Start from a previous LoRA" upload flow to verify the seed
+    is shape-compatible with the user's selected base model.
     """
     lora_mod = backend.lora_module()
     state_dict = {
@@ -104,6 +109,8 @@ def save_lora_step(backend, model, lora_save_config, out_path, *, step=None, epo
         enriched_cfg["step"] = int(step)
     if epoch is not None:
         enriched_cfg["epoch"] = int(epoch)
+    if base_model:
+        enriched_cfg["base_model"] = str(base_model)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     lora_mod.save_lora_safetensors(state_dict, enriched_cfg, out_path)
 

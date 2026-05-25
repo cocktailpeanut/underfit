@@ -112,6 +112,25 @@ def validate_lora_safetensors(path: str | Path) -> dict[str, Any]:
                     except Exception:
                         pass
                     break
+            # Per-layer (name, fan_in, fan_out) fingerprint, used by the
+            # base-model heuristic when metadata's base_model is missing.
+            # lora_A shape = (rank, fan_in); lora_B shape = (fan_out, rank).
+            layer_dims = {}  # base_name -> {"fan_in": int, "fan_out": int}
+            for k in keys:
+                m = _LORA_KEY_RE.search(k)
+                if not m:
+                    continue
+                kind = m.group(1)
+                base = k[: m.start()]
+                try:
+                    shape = list(f.get_slice(k).get_shape())
+                except Exception:
+                    continue
+                d = layer_dims.setdefault(base, {})
+                if kind == "lora_A" and len(shape) >= 2:
+                    d["fan_in"] = int(shape[1])
+                elif kind == "lora_B" and len(shape) >= 2:
+                    d["fan_out"] = int(shape[0])
     except Exception as e:
         result["error"] = f"could not open as safetensors: {type(e).__name__}: {e}"
         return result
@@ -165,6 +184,14 @@ def validate_lora_safetensors(path: str | Path) -> dict[str, Any]:
     config.setdefault("alpha", config["rank"])
     config.setdefault("include", [])
     config.setdefault("exclude", [])
+
+    # Per-layer (name, fan_in, fan_out) list — what the server-side base-
+    # model heuristic compares against each registry's lora_layer_template.
+    layers = []
+    for base, dims in layer_dims.items():
+        if "fan_in" in dims and "fan_out" in dims:
+            layers.append({"name": base, "fan_in": dims["fan_in"], "fan_out": dims["fan_out"]})
+    result["layers"] = layers
 
     # Cross-check: does the saved adapter_type match what the key fingerprints say?
     # If they disagree the metadata wins (it's authoritative), but we note the

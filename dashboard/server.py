@@ -3387,18 +3387,55 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except OSError:
             pass
 
-        # Response: success or failure both echo `partial` so frontend can show
-        # what we managed to extract even when validation failed.
+        # ── Base-model resolution ────────────────────────────────────────
+        # The seed's metadata may record which base model it was trained on
+        # (e.g. base_model='sa3-medium'). Three outcomes:
+        #   1. base_model present + known to this dashboard → return as-is.
+        #   2. base_model present but NOT known → flag as 'unknown_known_name'.
+        #   3. base_model missing → heuristic: layer name+dims must be a
+        #      subset of the candidate model's lora_layer_template.
+        seed_config = result.get("config") or {}
+        seed_base = seed_config.get("base_model")
+        known_models = list(MODELS_UI_PAYLOAD.keys())
+        inferred_models = []
+        if not seed_base:
+            # Build full per-model layer sets and check subset match.
+            seed_layers = result.get("layers") or []
+            seed_fingerprint = {(l["name"], l["fan_in"], l["fan_out"]) for l in seed_layers}
+            for mkey, minfo in MODELS_UI_PAYLOAD.items():
+                tmpl = minfo.get("lora_layer_template") or {}
+                ms = minfo.get("module_structure") or {}
+                n_blocks = ms.get("n_blocks") or tmpl.get("n_blocks") or 0
+                model_set = set()
+                for entry in tmpl.get("prefix", []) or []:
+                    model_set.add((entry["name"], entry["fi"], entry["fo"]))
+                for entry in tmpl.get("suffix", []) or []:
+                    model_set.add((entry["name"], entry["fi"], entry["fo"]))
+                pb_prefix = tmpl.get("per_block_prefix", "")
+                for i in range(int(n_blocks)):
+                    for entry in tmpl.get("per_block", []) or []:
+                        name = pb_prefix.replace("{i}", str(i)) + entry["suffix"]
+                        model_set.add((name, entry["fi"], entry["fo"]))
+                # LoRA fingerprint must be a SUBSET of the model's full layer set.
+                if seed_fingerprint and seed_fingerprint.issubset(model_set):
+                    inferred_models.append(mkey)
+
+        # Response shape
         response = {
             "ok": result["ok"],
             "path": str(final) if result["ok"] else None,
             "filename": orig_name,
-            "config": result["config"],
+            "config": seed_config,
             "partial": result["partial"],
             "error": result["error"],
+            # base-model verdict — frontend uses these to decide which popup to show:
+            #   base_model_in_seed:       what the seed's metadata claims (str or None)
+            #   base_model_known:         True iff that name is in this dashboard's registry
+            #   inferred_base_models:     candidate matches when no metadata (may be empty)
+            "base_model_in_seed":    seed_base,
+            "base_model_known":      bool(seed_base) and seed_base in known_models,
+            "inferred_base_models":  inferred_models,
         }
-        # On failure, keep the file around for inspection but don't expose its
-        # path so callers can't bypass validation by referencing it directly.
         if not result["ok"]:
             response["path"] = None
         self._json_response(response, status=200)
@@ -3456,6 +3493,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 )
                 return
             sc = seed_check["config"]
+            seed_base = sc.get("base_model")
+            if seed_base and seed_base != base_model:
+                self._json_response(
+                    {"error": f"Seed LoRA was trained from '{seed_base}', "
+                              f"but selected base model is '{base_model}'. Switch the "
+                              f"base model in the form, or clear the seed."},
+                    status=400,
+                )
+                return
             lora_type = sc.get("adapter_type", lora_type)
             rank = int(sc.get("rank", rank))
             alpha = sc.get("alpha", alpha)
@@ -3518,6 +3564,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             with open(base_model_config) as f:
                 cfg = json.load(f)
+            # Stash the dashboard's base-model key so lora_train can embed it
+            # in saved checkpoint metadata. Used by 'Start from a previous
+            # LoRA' uploads to verify shape compatibility.
+            cfg["base_model"] = base_model
             cfg.setdefault("training", {}).setdefault("lora_config", {})["rank"] = rank
             cfg["training"]["lora_config"]["adapter_type"] = lora_type
             if alpha is not None:
