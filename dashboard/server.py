@@ -4361,15 +4361,33 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             relay (ngrok / Colab proxy) doesn't time out the connection
           - exits cleanly on BrokenPipe / ConnectionReset
         """
+        # Force HTTP/1.1 + chunked Transfer-Encoding for this response only.
+        # Python's BaseHTTPRequestHandler defaults to HTTP/1.0; under 1.0
+        # the response has no Content-Length and no chunked framing, so
+        # proxies (Cloudflare, Colab's googleusercontent port-proxy) refuse
+        # to stream it and buffer until the connection closes — events
+        # never reach the browser in real time. Setting protocol_version
+        # on `self` shadows the class attribute for just this request, and
+        # since the SSE handler never returns until client disconnect,
+        # this never affects another request on the same instance.
+        self.protocol_version = "HTTP/1.1"
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache, no-store")
             self.send_header("Connection", "keep-alive")
-            self.send_header("X-Accel-Buffering", "no")  # disable nginx/proxy buffering
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("X-Accel-Buffering", "no")  # disable nginx-style buffering
             self.end_headers()
         except Exception:
             return
+
+        # Write one HTTP/1.1 chunk: hex-length CRLF body CRLF, flushed.
+        def _chunk(body: bytes) -> None:
+            self.wfile.write(f"{len(body):X}\r\n".encode())
+            self.wfile.write(body)
+            self.wfile.write(b"\r\n")
+            self.wfile.flush()
 
         # Initial state pointers — caller can pass these in via query string
         # after a reconnect to skip already-seen content.
@@ -4567,23 +4585,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     except Exception:
                         pass
 
-                # ── write the SSE frame ──
+                # ── write the SSE frame as a chunked-encoded body ──
                 if payload:
                     seq += 1
                     line = (
                         f"id: {seq}\n"
                         f"data: {json.dumps(payload, default=str)}\n\n"
                     )
-                    self.wfile.write(line.encode())
+                    _chunk(line.encode())
                 else:
                     # heartbeat — comment line, ignored by EventSource,
                     # keeps the connection alive through idle proxies
-                    self.wfile.write(b": ping\n\n")
-                self.wfile.flush()
+                    _chunk(b": ping\n\n")
 
                 time.sleep(1)
         except (BrokenPipeError, ConnectionResetError, OSError):
             return  # client disconnected — clean exit, thread ends
+        finally:
+            # Terminator chunk (0-length) — politely signals end of body
+            # if we ever break out of the loop without an error.
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except Exception:
+                pass
 
     def _serve_audio(self, rel_path, dl_name=None):
         fpath = AUDIO_DIR / rel_path
