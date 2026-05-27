@@ -6,6 +6,7 @@
 
 ---
 
+
 ## Quickstart — local GPU box
 
 Linux box with an NVIDIA GPU, `git`, and `curl`. Everything else gets fetched automatically.
@@ -22,6 +23,15 @@ Open the URL in a browser, click **+ New Dataset** to star
 
 > To reach the dashboard in your browser If your linux box is remote, you'll need to either tunnel to localhost:8787 over ssh, or use NGROK (recommended) to forward a domain to http://localhost:8787 
 
+
+---
+
+
+## Quickstart — Google Colab
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dada-bots/underfit/blob/main/underfit-colab.ipynb) 
+
+Jankier than running locally, but still works. Read more here: https://github.com/dada-bots/underfit#running-on-colab
 
 ---
 
@@ -45,7 +55,11 @@ Open the URL in a browser, click **+ New Dataset** to star
 
 ---
 
-## What you can do
+
+
+
+
+## Underfit Features
 
 - **Encode any folder of audio** into pre-encoded latents — multi-GPU sharded if you have more than one card. Supported: WAV / FLAC / MP3 / OGG / OPUS / M4A / AIFF.
 - **Manage dozens of LoRA finetunes simultaneously** with live loss curves and a "loss-by-timestep" chart that splits the loss across the diffusion sigma range. Demo MP3s + tinted-spectrogram previews get generated every N steps.
@@ -244,7 +258,7 @@ Pass multiple `.safetensors` to blend LoRAs. Strengths interact non-linearly —
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dada-bots/underfit/blob/main/underfit-colab.ipynb)
 
-Same underfit, same dashboard, just hosted on Colab's GPU instead of yours. The notebook walks through everything end-to-end.
+Same underfit, same dashboard, just hosted on Colab's GPU instead of yours. The notebook walks through everything end-to-end. Definitely jankier than running it locally yourself. 
 
 ### Why Colab
 
