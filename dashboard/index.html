@@ -1935,7 +1935,7 @@ async function _loadRemoteModels() {
 // Run as soon as DOM is ready (script lives at end of body, so doc is already parsed).
 _loadRemoteModels();
 
-// Return "V", "RF", or "ARC" label for a demo based on model's diffusion objective
+// Return "V", "Base", or "ARC" label for a demo based on model's diffusion objective
 function _gpuLabelColor(label) {
   if (label.startsWith('Training') || label.startsWith('Demos')) return 'var(--green)';
   if (label.startsWith('Gradio')) return '#3b82f6';
@@ -1948,7 +1948,7 @@ function _gpuLabelColor(label) {
 function _samplerLabel(isArc, baseModel) {
   if (isArc) return 'ARC';
   const mi = _arcInfo[baseModel] || {};
-  return mi.diffusion_objective === 'v' ? 'V' : 'RF';
+  return mi.diffusion_objective === 'v' ? 'V' : 'Base';
 }
 let _cudaVisibleDevices = null;  // null = all visible, array of ints = restricted
 let _cudaOverride = false;  // user clicked Override to ignore CUDA restriction
@@ -3286,9 +3286,9 @@ window.openGpuModal = function(ckptPath, ckptName) {
     variantEl.style.display = '';
     variantBtns.innerHTML = '';
     const stepLabel = arc.arc_type === 'full_model' ? '8-step' : '8-step, +ARC LoRA';
-    const baseLabel = arc.diffusion_objective === 'v' ? 'V' : 'RF';
+    const baseLabel = arc.diffusion_objective === 'v' ? 'V' : 'Base';
     const baseSteps = arc.diffusion_objective === 'v' ? '100-step' : '50-step';
-    [{key:'arc', label: baseModel.toUpperCase() + ' ARC (' + stepLabel + ')'}, {key:'rf', label: baseModel.toUpperCase() + ' ' + baseLabel + ' Base (' + baseSteps + ')'}].forEach(v => {
+    [{key:'arc', label: baseModel.toUpperCase() + ' ARC (' + stepLabel + ')'}, {key:'rf', label: baseModel.toUpperCase() + ' ' + baseLabel + ' (' + baseSteps + ')'}].forEach(v => {
       const btn = document.createElement('button');
       btn.className = 'gpu-btn' + (v.key === 'arc' ? ' selected' : '');
       btn.style.cssText = 'padding:6px 14px;font-size:0.85em;min-width:0;flex:0 0 auto';
@@ -4571,7 +4571,7 @@ function _defaultNewFtDemos(preset) {
   const model = document.getElementById('new-ft-base-model').value || 'sa3';
   const mi = _arcInfo[model] || {};
   const hasArc = mi.arc_type === 'full_model' || mi.arc_type === 'lora';
-  const sampler = mi.diffusion_objective === 'v' ? 'V' : 'RF';
+  const sampler = mi.diffusion_objective === 'v' ? 'V' : 'Base';
   const baseSteps = mi.diffusion_objective === 'v' ? 100 : 50;
   if (preset === undefined || preset === null) preset = _newFtPreset;
   if (preset === 2) {
@@ -4672,7 +4672,7 @@ function _renderDemoEntries() {
     const _ftModel = document.getElementById('new-ft-base-model').value || 'sa3';
     const _ftMi = _arcInfo[_ftModel] || {};
     const _ftHasArc = _ftMi.arc_type === 'full_model' || _ftMi.arc_type === 'lora';
-    const _ftBaseLabel = _ftMi.diffusion_objective === 'v' ? 'V' : 'RF';
+    const _ftBaseLabel = _ftMi.diffusion_objective === 'v' ? 'V' : 'Base';
     const isBase = d.sampler !== 'ARC';
     const samplerWrap = document.createElement('div');
     if (_ftHasArc) {
@@ -4835,7 +4835,7 @@ window.addNewFtDemo = function() {
   const _addModel = document.getElementById('new-ft-base-model').value || 'sa3';
   const _addMi = _arcInfo[_addModel] || {};
   const _addHasArc = _addMi.arc_type === 'full_model' || _addMi.arc_type === 'lora';
-  const _addSampler = _addHasArc ? 'ARC' : (_addMi.diffusion_objective === 'v' ? 'V' : 'RF');
+  const _addSampler = _addHasArc ? 'ARC' : (_addMi.diffusion_objective === 'v' ? 'V' : 'Base');
   const _addCfg = _addHasArc ? 1 : 7;
   const _addSteps = _addHasArc ? 8 : (_addMi.diffusion_objective === 'v' ? 100 : 50);
   _newFtDemos.push({prompt: _addGen.prompt, sourceFile: _addGen.file, sampler: _addSampler, cfg: _addCfg, steps: _addSteps, seed: _randomSeed()});
@@ -5806,7 +5806,7 @@ window.cloneRunSettings = async function() {
     // Restore demos if dataset and prompt config match the source run
     const _cloneModel = s.base_model || 'sa3';
     const _cloneMi = _arcInfo[_cloneModel] || {};
-    const _cloneBaseLabel = _cloneMi.diffusion_objective === 'v' ? 'V' : 'RF';
+    const _cloneBaseLabel = _cloneMi.diffusion_objective === 'v' ? 'V' : 'Base';
     if (_cloneDatasetMatch && s.demo_cond && s.demo_cond.length > 0) {
       const _cloneSeqInfo = _modelSeqInfo[_cloneModel] || _modelSeqInfo['sa3'];
       const _cloneCropLen = s.latent_crop_length || _cloneSeqInfo.length;
