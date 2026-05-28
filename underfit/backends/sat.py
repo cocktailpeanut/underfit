@@ -136,6 +136,11 @@ def demo_sample(model, model_config, cond_list, *, steps, cfg_scale,
 
 
 def create_dataloader(dataset_config, **kwargs):
+    # stable-audio-tools' factory predates the pin_memory / persistent_workers
+    # knobs the sa3 backend exposes — drop them here so the unified caller in
+    # loop.py can pass both backends the same kwargs without sat blowing up.
+    kwargs.pop("pin_memory", None)
+    kwargs.pop("persistent_workers", None)
     return create_dataloader_from_config(dataset_config, **kwargs)
 
 

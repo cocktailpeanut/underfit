@@ -238,7 +238,8 @@ def demo_sample(model, model_config, cond_list, *, steps, cfg_scale,
 
 def create_dataloader(dataset_config, batch_size, sample_size, sample_rate,
                      audio_channels=2, num_workers=4, shuffle=True,
-                     tokenizers=None, pad=True):
+                     tokenizers=None, pad=True,
+                     pin_memory=True, persistent_workers=True):
     """Construct a DataLoader for the dataset types Underfit uses.
 
     Currently supports: pre_encoded. SAT-dev's factory supports more types
@@ -344,6 +345,10 @@ def create_dataloader(dataset_config, batch_size, sample_size, sample_rate,
         # anyway; this matters only when len(ds) % batch_size != 0 in the
         # normal (no-replacement) regime.
         drop_last=False,
+        # PyTorch raises if persistent_workers=True is paired with
+        # num_workers=0; guard at the call site.
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers and num_workers > 0,
     )
 
 

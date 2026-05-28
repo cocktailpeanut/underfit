@@ -108,6 +108,12 @@ def get_all_args(defaults_file="defaults.ini"):
     for key, val in vars(args).items():
         if isinstance(val, str):
             val = val.strip("'\"")
+            # Bool first — int("True") would silently fall through as a
+            # ValueError but "1"/"0" would coerce to int. Handle bool
+            # literals explicitly before the numeric path.
+            if val.lower() in ("true", "false"):
+                setattr(args, key, val.lower() == "true")
+                continue
             setattr(args, key, val)
             try:
                 setattr(args, key, int(val))

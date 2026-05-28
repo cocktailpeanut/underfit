@@ -365,6 +365,11 @@ def run_training(args, backend):
               f"(host has {os.cpu_count()} CPUs)", flush=True)
 
     print("[startup] Building dataloader …", flush=True)
+    # Dataloader perf knobs — see defaults.ini for context. Default-on,
+    # CLI-overridable. persistent_workers is silently disabled when
+    # num_workers=0 since PyTorch raises in that case.
+    _pin_memory = bool(getattr(args, "pin_memory", True))
+    _persistent = bool(getattr(args, "persistent_workers", True)) and effective_workers > 0
     train_dl = backend.create_dataloader(
         dataset_config,
         batch_size=args.batch_size,
@@ -373,6 +378,8 @@ def run_training(args, backend):
         sample_size=sample_size,
         audio_channels=audio_channels,
         tokenizers=tokenizers if tokenizers else None,
+        pin_memory=_pin_memory,
+        persistent_workers=_persistent,
     )
 
     # --- Optimizer and scheduler ---
