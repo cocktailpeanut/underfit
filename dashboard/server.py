@@ -296,23 +296,45 @@ def estimate_training_vram_mb(base_model="sa3", batch_size=8, lora_rank=16, prec
 def _backend_env_for_model(model_key):
     """Return an env-var fragment to set UNDERFIT_BACKEND for a given base model.
 
-    Each MODEL_INFO entry declares a list of supported backends (e.g. SA3
-    models support both 'sa3' and 'sat' since the codepath is compatible).
-    Pick the first one whose Python package is importable in the venv — that
-    way 'pip install -e <sa3>' alone is enough to run an SA3 model even when
-    the registry also lists sat as compatible. Returns "" if none of the
-    declared backends are importable (falls back to autodetect downstream).
+    Each MODEL_INFO entry declares a list of supported backends. Pick the
+    first one whose Python package is importable in the venv. Returns ""
+    if none of the declared backends are importable (callers should treat
+    this as "can't launch" — see _missing_backend_error_for_model).
     """
     import importlib.util
     info = MODEL_INFO.get(model_key) or {}
     backends = info.get("backends") or []
-    # Skip backends whose Python package isn't installed.
     mod_for = {"sa3": "stable_audio_3", "sat": "stable_audio_tools"}
     for b in backends:
         modname = mod_for.get(b)
         if modname and importlib.util.find_spec(modname) is not None:
             return f"UNDERFIT_BACKEND={b} "
     return ""
+
+
+def _missing_backend_error_for_model(model_key):
+    """If model_key's declared backends are all uninstalled, return a
+    user-facing error string. Otherwise None. Used by launch handlers to
+    refuse a doomed launch with a clear message instead of letting the
+    trainer subprocess fail mid-startup with a cryptic TypeError."""
+    import importlib.util
+    info = MODEL_INFO.get(model_key) or {}
+    backends = info.get("backends") or []
+    if not backends:
+        return None  # legacy model without a declared backend list
+    mod_for = {"sa3": "stable_audio_3", "sat": "stable_audio_tools"}
+    for b in backends:
+        modname = mod_for.get(b)
+        if modname and importlib.util.find_spec(modname) is not None:
+            return None
+    pretty = " or ".join(f"`{b}`" for b in backends)
+    pkgs   = " or ".join(f"`{mod_for.get(b, b)}`" for b in backends)
+    return (
+        f"Model '{model_key}' requires the {pretty} backend, but no "
+        f"matching Python package ({pkgs}) is installed in this dashboard's "
+        f"venv. Run `./install.sh --backend {backends[0]}` to install it, "
+        f"then restart the dashboard."
+    )
 
 
 # Gradio launch constants. VENV_ACTIVATE is autodetected from the running
@@ -3842,6 +3864,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 "
             "NUMEXPR_NUM_THREADS=4 RAYON_NUM_THREADS=4 TOKENIZERS_PARALLELISM=false "
         ) if GRADIO_THREAD_CAP else ""
+        # Refuse the launch up front if the chosen model's declared backends
+        # aren't installed — otherwise the trainer subprocess crashes mid-
+        # startup with a cryptic TypeError when the model config hits a
+        # conditioner whose kwargs don't match the older backend's API.
+        backend_err = _missing_backend_error_for_model(base_model)
+        if backend_err:
+            self._json_response({"error": backend_err}, status=400)
+            return
         backend_env = _backend_env_for_model(base_model)
         # UNDERFIT_LOG_PATH lets lora_train.py write a sidecar <log>.exit on
         # any unhandled exception — robust to pipe/buffering issues that can
@@ -4172,6 +4202,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # Launch — use GPU from request body if provided, else fall back to run's previous GPU
         gpu = body.get("gpu", run.get("gpu"))
         gpu_env = f"CUDA_VISIBLE_DEVICES={gpu} " if gpu is not None else ""
+        # Refuse the resume up front if the run's declared backends aren't
+        # installed (see _missing_backend_error_for_model docstring).
+        backend_err = _missing_backend_error_for_model(run.get("base_model"))
+        if backend_err:
+            self._json_response({"error": backend_err}, status=400)
+            return
         backend_env = _backend_env_for_model(run.get("base_model"))
         demo_dir = run.get("demo_source_dir", str(RUNS_DIR))
         os.makedirs(demo_dir, exist_ok=True)
