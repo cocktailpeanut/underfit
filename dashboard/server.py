@@ -1397,6 +1397,7 @@ class GradioManager:
         with self._lock:
             instance_id = uuid.uuid4().hex[:12]
             port = self._find_available_port()
+            checkpoint_path = _bash_path(_app_path(checkpoint_path))
             if not title:
                 title = checkpoint_name or Path(checkpoint_path).name
             # Resolve base model from run record
@@ -4232,7 +4233,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             with open(orig_model_config) as f:
                 cfg = json.load(f)
             if latest_ckpt:
-                cfg.setdefault("training", {})["lora_ckpt_path"] = str(latest_ckpt)
+                cfg.setdefault("training", {})["lora_ckpt_path"] = _bash_path(_app_path(latest_ckpt))
             else:
                 # No checkpoint — remove any stale lora_ckpt_path, start fresh from base model
                 cfg.get("training", {}).pop("lora_ckpt_path", None)
@@ -6452,7 +6453,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "session": c.parent.parent.name,
                 "step": effective,
                 "size_mb": round(st.st_size / 1e6, 1),
-                "path": str(c),
+                "path": _bash_path(_app_path(c)),
                 "mtime": st.st_mtime,
             }
             if dataset_history and len(dataset_history) > 1:
